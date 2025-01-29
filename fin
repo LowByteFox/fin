@@ -1,3 +1,114 @@
 #!/usr/bin/perl -I./
 
+use strict;
+use warnings;
+use Getopt::Std;
 use Cron;
+use Storage;
+use Task;
+
+sub usage {
+    print STDERR "usage: $0 [-a task] [-cd id] [-l] file
+  -a task\tadd task
+  -c id\t\tcomplete task using id
+  -d id\t\tdelete task using id
+  -l\t\tlist all tasks
+";
+
+    exit(1);
+}
+
+sub take_cron_input {
+    my $in = <STDIN>;
+    chomp($in);
+    if (!$in) {
+        $in = "*";
+    }
+
+    return $in;
+}
+
+sub update_task_db {
+    my ($file, @tasks) = @_;
+
+    open(my $fh, ">", $file);
+
+    foreach my $task (@tasks) {
+        print $fh $task->get_cron() . "|" . $task->get_task() . "\n";
+    }
+
+    close($fh);
+}
+
+my $argv_len = @ARGV;
+
+if ($argv_len == 0) {
+    usage
+}
+
+my %opts;
+getopts("a:c:d:l", \%opts);
+
+my $file = shift @ARGV;
+
+if (!defined $file) {
+    usage
+}
+
+if (! -f $file) {
+    open(my $fh, ">", $file);
+    close($fh);
+}
+
+my $storage = Storage::open($file);
+my @tasks = Storage::parse($storage);
+Storage::close($storage);
+
+if (defined $opts{l}) {
+    my $i = 1;
+    foreach my $task (@tasks) {
+        print("$i|" . $task->get_cron() . "|" . $task->get_task() . "|\n");
+        $i++;
+    }
+} elsif (defined $opts{a}) {
+    my $cron_builder = "";
+    print("You are about to construct cron expression!"
+        . "Take a look at UNIX cron format!\nYou can press enter to " .
+        "signalize *\n");
+
+    print("Minute: ");
+    $cron_builder = $cron_builder . take_cron_input() . " ";
+    print("Hour: ");
+    $cron_builder = $cron_builder . take_cron_input() . " ";
+    print("Day of Month: ");
+    $cron_builder = $cron_builder . take_cron_input() . " ";
+    print("Month: ");
+    $cron_builder = $cron_builder . take_cron_input() . " ";
+    print("Day of Week: ");
+    $cron_builder = $cron_builder . take_cron_input();
+
+    push(@tasks, Task->new($opts{a}, $cron_builder));
+    update_task_db($file, @tasks);
+} elsif (defined $opts{c} || defined $opts{d}) {
+    my $index = -1;
+    if (defined $opts{c}) {
+        $index = $opts{c} - 1;
+    } else {
+        $index = $opts{d} -1;
+    }
+
+    if ($index < 0 || $index > scalar(@tasks)) {
+        $index++;
+        print STDERR "Index $index is out of range!\n";
+
+        exit(1);
+    }
+
+    splice(@tasks, $index, 1);
+    update_task_db($file, @tasks);
+} else {
+    my @time = localtime();
+    foreach my $task (@tasks) {
+        print $task->get_task() . "\n" if Cron::match($task->get_cron(), @time);
+    }
+}
