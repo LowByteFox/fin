@@ -3,12 +3,15 @@
 use strict;
 use warnings;
 use Getopt::Std;
+use File::Basename;
+
 use Cron;
 use Storage;
 use Task;
 
 sub usage {
-    print STDERR "usage: $0 [-a task] [-cd id] [-l] file
+    my $name = basename($0);
+    print STDERR "usage: $name [-a task] [-cd id] [-l] file
   -a task\tadd task
   -c id\t\tcomplete task using id
   -d id\t\tdelete task using id
